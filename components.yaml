@@ -1,0 +1,156 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Complete Serverless Flight Hunter Agent with API Gateway and Secure Secrets'
+
+Parameters:
+  ECRImageUri:
+    Type: String
+    Description: 'The URI of your Docker image in ECR'
+  ApplicationName:
+    Type: String
+    Default: 'flight-hunter'
+
+Resources:
+  # 1. STORAGE: DynamoDB Table for Search Requests
+  ActiveSearchesTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: !Sub "${ApplicationName}-ActiveSearches"
+      AttributeDefinitions:
+        - AttributeName: contact
+          AttributeType: S
+      KeySchema:
+        - AttributeName: contact
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      BillingMode: PAY_PER_REQUEST
+
+  # 2. NOTIFICATIONS: SNS Topic for Alerts
+  FlightAlertTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      TopicName: !Sub "${ApplicationName}-Alerts"
+
+  # 3. PERMISSIONS: IAM Role for the Lambda Function
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: [lambda.amazonaws.com] }
+            Action: ['sts:AssumeRole']
+      Policies:
+        - PolicyName: FlightHunterAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # Access to SSM Parameter Store for API Keys
+              - Effect: Allow
+                Action: ['ssm:GetParameter']
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/flights/*'
+              # Access to DynamoDB
+              - Effect: Allow
+                Action: ['dynamodb:Scan', 'dynamodb:PutItem', 'dynamodb:GetItem', 'dynamodb:UpdateItem']
+                Resource: !GetAtt ActiveSearchesTable.Arn
+              # Access to SNS (Topic + Direct SMS)
+              - Effect: Allow
+                Action: ['sns:Publish']
+                Resource: '*' # Required for sending Direct SMS via PhoneNumber
+              # Basic Execution (Logging)
+              - Effect: Allow
+                Action: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents']
+                Resource: 'arn:aws:logs:*:*:*'
+
+  # 4. COMPUTE: Docker-based Lambda Function
+  ScraperFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: !Sub "${ApplicationName}-Worker"
+      PackageType: Image
+      Code:
+        ImageUri: !Ref ECRImageUri
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Timeout: 300 # 5 minutes for Skyscanner polling
+      MemorySize: 2048
+      Environment:
+        Variables:
+          SEARCH_TABLE: !Ref ActiveSearchesTable
+          SNS_TOPIC_ARN: !Ref FlightAlertTopic
+          RAPIDAPI_KEY_PATH: "/flights/rapidapi_key"
+          OPENAI_API_KEY_PATH: "/flights/openai_key"
+
+  # 5. FRONT DOOR: API Gateway (HTTP API V2)
+  FlightHunterApi:
+    Type: 'AWS::ApiGatewayV2::Api'
+    Properties:
+      Name: !Sub "${ApplicationName}-API"
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowHeaders: ['Content-Type', 'Authorization']
+        AllowMethods: ['POST', 'OPTIONS']
+        AllowOrigins: ['*']
+
+  # 6. INTEGRATION: Link API to Lambda
+  ApiLambdaIntegration:
+    Type: 'AWS::ApiGatewayV2::Integration'
+    Properties:
+      ApiId: !Ref FlightHunterApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ScraperFunction.Arn
+      PayloadFormatVersion: '2.0'
+
+  # 7. ROUTE: Define the POST endpoint
+  SendOtpRoute:
+    Type: 'AWS::ApiGatewayV2::Route'
+    Properties:
+      ApiId: !Ref FlightHunterApi
+      RouteKey: 'POST /send-otp'
+      Target: !Join [ '/', [ 'integrations', !Ref ApiLambdaIntegration ] ]
+
+  # 8. DEPLOYMENT: Make API live
+  ApiStage:
+    Type: 'AWS::ApiGatewayV2::Stage'
+    Properties:
+      ApiId: !Ref FlightHunterApi
+      StageName: '$default'
+      AutoDeploy: true
+
+  # 9. SECURITY: Permission for API Gateway to call Lambda
+  ApiInvokePermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref ScraperFunction
+      Principal: 'apigateway.amazonaws.com'
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${FlightHunterApi}/*"
+
+  # 10. AUTOMATION: Hourly Trigger for Scraper
+  HourlyRule:
+    Type: 'AWS::Events::Rule'
+    Properties:
+      ScheduleExpression: 'rate(1 hour)'
+      State: 'ENABLED'
+      Targets:
+        - Arn: !GetAtt ScraperFunction.Arn
+          Id: 'HourlyTrigger'
+
+  # Permission for EventBridge to call Lambda
+  EventBridgePermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref ScraperFunction
+      Principal: 'events.amazonaws.com'
+      SourceArn: !GetAtt HourlyRule.Arn
+
+Outputs:
+  ApiUrl:
+    Description: "Copy this URL into your index.html fetch call"
+    Value: !Sub "https://${FlightHunterApi}.execute-api.${AWS::Region}.amazonaws.com/send-otp"
+  DynamoTable:
+    Value: !Ref ActiveSearchesTable
+  SnsTopic:
+    Value: !Ref FlightAlertTopic

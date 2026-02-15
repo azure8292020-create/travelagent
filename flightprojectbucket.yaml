@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'S3 Bucket for hosting the Flight Agent Frontend'
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: 'Enter a unique name for your flight agent bucket (e.g., my-family-flight-agent-2026)'
+
+Resources:
+  # 1. The S3 Bucket configured for Website Hosting
+  FlightAgentBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Ref BucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+
+  # 2. Public Read Policy (Necessary for static website hosting)
+  BucketPolicy:
+    Type: 'AWS::S3::BucketPolicy'
+    Properties:
+      Bucket: !Ref FlightAgentBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Sub 'arn:aws:s3:::${FlightAgentBucket}/*'
+
+Outputs:
+  WebsiteURL:
+    Description: 'URL for the Flight Agent website'
+    Value: !GetAtt FlightAgentBucket.WebsiteURL

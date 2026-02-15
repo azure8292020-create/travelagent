@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlightGPT Agent</title>
+    <style>
+        :root {
+            --sidebar-bg: #202123;
+            --main-bg: #343541;
+            --card-bg: #444654;
+            --text-primary: #ececf1;
+            --text-secondary: #c5c5d2;
+            --accent: #10a37f;
+            --accent-hover: #1a7f64;
+            --border: #565869;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Söhne', 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--main-bg);
+            color: var(--text-primary);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- SIDEBAR --- */
+        .sidebar {
+            width: 260px;
+            background: var(--sidebar-bg);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #4d4d4f;
+            flex-shrink: 0;
+        }
+
+        .new-chat-btn {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 20px;
+        }
+
+        .new-chat-btn:hover {
+            background: #2b2c2f;
+        }
+
+        .history-item {
+            padding: 10px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            cursor: pointer;
+            border-radius: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-item:hover {
+            background: #2a2b32;
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            border-top: 1px solid var(--border);
+            padding-top: 10px;
+        }
+
+        /* --- MAIN CHAT AREA --- */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            background: var(--main-bg);
+        }
+
+        .chat-scroll-area {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: 120px;
+            /* Space for prompt bar */
+        }
+
+        /* --- MESSAGE BUBBLES --- */
+        .message-row {
+            padding: 24px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .message-row.user {
+            background: var(--main-bg);
+        }
+
+        .message-row.assistant {
+            background: var(--card-bg);
+        }
+
+        .message-content {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            gap: 20px;
+        }
+
+        .avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .avatar.gpt {
+            background: var(--accent);
+        }
+
+        .avatar.user {
+            background: #5436da;
+        }
+
+        .text-block {
+            line-height: 1.6;
+            width: 100%;
+        }
+
+        /* --- THE MAD LIBS FORM PROMPT --- */
+        .prompt-container {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
+            margin-top: 10vh;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 40px;
+            font-weight: 600;
+            opacity: 0.9;
+        }
+
+        .mad-libs-box {
+            background: #40414f;
+            padding: 30px;
+            border-radius: 12px;
+            line-height: 2.2;
+            font-size: 1.15rem;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .inline-input {
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid var(--border);
+            color: var(--accent);
+            font-weight: bold;
+            font-size: 1.1rem;
+            text-align: center;
+            padding: 0 5px;
+            outline: none;
+            font-family: inherit;
+        }
+
+        .inline-input:focus {
+            border-bottom-color: var(--accent);
+        }
+
+        .w-small {
+            width: 50px;
+        }
+
+        .w-med {
+            width: 120px;
+        }
+
+        .w-large {
+            width: 200px;
+        }
+
+        .w-date {
+            width: 140px;
+        }
+
+        .mic-btn {
+            float: right;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+
+        .mic-btn.listening {
+            color: #ef4444;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .action-bar {
+            margin-top: 20px;
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .send-btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .send-btn:hover {
+            background: var(--accent-hover);
+        }
+
+        /* --- AGENT RESPONSE UI --- */
+        .otp-panel {
+            background: #202123;
+            border: 1px solid var(--border);
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .otp-digits {
+            font-family: monospace;
+            font-size: 1.5rem;
+            letter-spacing: 5px;
+            background: black;
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: 10px;
+            width: 150px;
+            text-align: center;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <div class="new-chat-btn" onclick="location.reload()">
+            <span>+</span> New flight search
+        </div>
+
+        <div style="flex:1;">
+            <div style="padding: 0 10px 10px; font-size: 0.75rem; color: #8e8ea0; font-weight: bold;">TODAY</div>
+            <div class="history-item">Trip to London</div>
+            <div class="history-item">Family Vacation</div>
+            <div class="history-item">Business Trip IAD</div>
+        </div>
+
+        <div class="sidebar-footer">
+            <div class="history-item">⚙️ Settings</div>
+            <div class="history-item">👤 My Account</div>
+        </div>
+    </div>
+
+    <!-- MAIN CHAT -->
+    <div class="main-content">
+        <div class="chat-scroll-area" id="chat-stream">
+
+            <!-- INITIAL PROMPT (The Form) -->
+            <div class="prompt-container" id="initial-form-container">
+                <h1>FlightGPT</h1>
+
+                <div class="mad-libs-box">
+                    <button class="mic-btn" id="mic-btn" onclick="toggleVoice()" title="Dictate Notes">🎙️</button>
+
+                    Hi AI, I am <input type="text" id="username" class="inline-input w-med" placeholder="Name">.
+                    <br>
+                    Find me
+                    <input type="number" id="adults" class="inline-input w-small" value="1" min="1"> tickets
+                    (<select id="cabinClass" class="inline-input">
+                        <option value="economy">Economy</option>
+                        <option value="business">Business</option>
+                    </select>)
+                    from
+                    <input type="text" id="originSkyId" class="inline-input w-small" placeholder="IAD" value="IAD"
+                        onkeyup="this.value = this.value.toUpperCase()">
+                    to
+                    <input type="text" id="destinationSkyId" class="inline-input w-small" placeholder="BLR" value="BLR"
+                        onkeyup="this.value = this.value.toUpperCase()">.
+                    <br>
+                    Planning to go
+                    <input type="date" id="departureDate" class="inline-input w-date">
+                    and return
+                    <input type="date" id="returnDate" class="inline-input w-date">.
+                    <br><br>
+                    Send alerts to: <input type="text" id="contact" class="inline-input w-large" placeholder="+1...">.
+
+                    <div style="margin-top: 15px;">
+                        <input type="text" id="notes" class="inline-input" style="width: 100%; text-align: left;"
+                            placeholder="Additional context (e.g. 'No long layovers')...">
+                    </div>
+
+                    <div class="action-bar">
+                        <button class="send-btn" onclick="submitToAgent()">
+                            <span>✈️</span> Generate Plan
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Hidden Defaults -->
+    <input type="hidden" id="children" value="0">
+    <input type="hidden" id="infants" value="0">
+    <input type="hidden" id="stops" value="direct,1stop,2stops">
+
+    <script>
+        const API_URL = "https://tat1qc4gq1.execute-api.us-east-2.amazonaws.com/send-otp";
+        let capturedData = {};
+
+        // --- VOICE ---
+        let recognition;
+        function toggleVoice() {
+            if (!('webkitSpeechRecognition' in window)) return alert("Use Chrome for Voice.");
+            if (!recognition) {
+                recognition = new webkitSpeechRecognition();
+                recognition.continuous = false;
+                recognition.lang = 'en-US';
+                recognition.onstart = () => document.getElementById('mic-btn').classList.add('listening');
+                recognition.onend = () => document.getElementById('mic-btn').classList.remove('listening');
+                recognition.onresult = (e) => {
+                    const txt = e.results[0][0].transcript;
+                    const field = document.getElementById('notes');
+                    field.value += (field.value ? " " : "") + txt;
+                };
+            }
+            recognition.start();
+        }
+
+        // --- INIT ---
+        window.onload = function () {
+            const today = new Date();
+            const tmrw = new Date(today); tmrw.setDate(today.getDate() + 1);
+            const next = new Date(tmrw); next.setDate(tmrw.getDate() + 7);
+
+            const dep = document.getElementById('departureDate');
+            const ret = document.getElementById('returnDate');
+
+            if (!dep.value) dep.valueAsDate = tmrw;
+            if (!ret.value) ret.valueAsDate = next;
+        };
+
+        // --- SUBMIT LOGIC ---
+        function submitToAgent() {
+            // Validation
+            const username = document.getElementById('username').value.trim();
+            const origin = document.getElementById('originSkyId').value.trim();
+            const dest = document.getElementById('destinationSkyId').value.trim();
+            const contact = document.getElementById('contact').value.trim();
+
+            if (!username || !origin || !dest || !contact) {
+                return alert("Please fill in the required fields to start.");
+            }
+
+            // 1. Convert Form to "User Message"
+            const container = document.getElementById('initial-form-container');
+            container.style.display = 'none'; // Hide form
+
+            // Add User Message bubble
+            addMessage('user', `
+                <strong>Request:</strong> Roundtrip ${origin} to ${dest}.<br>
+                <strong>Dates:</strong> ${document.getElementById('departureDate').value} - ${document.getElementById('returnDate').value}.<br>
+                <strong>Notes:</strong> ${document.getElementById('notes').value || "None"}
+            `);
+
+            // Add Assistant "Thinking" bubble
+            const loaderId = addMessage('assistant', `<em>Thinking... verifying identity...</em>`);
+
+            // Capture Data
+            capturedData = {
+                username, originSkyId: origin.toUpperCase(), destinationSkyId: dest.toUpperCase(),
+                contact, cabinClass: document.getElementById('cabinClass').value,
+                adults: parseInt(document.getElementById('adults').value),
+                children: 0, infants: 0,
+                departureDate: document.getElementById('departureDate').value,
+                returnDate: document.getElementById('returnDate').value,
+                notes: document.getElementById('notes').value
+            };
+
+            // 2. Start Parallel Backend Process
+            Promise.all([
+                fetch(API_URL, {
+                    method: 'POST', body: JSON.stringify({ action: "SEND_OTP", contact })
+                }).then(r => r.json()),
+
+                fetch(API_URL, {
+                    method: 'POST', body: JSON.stringify({ action: "ANALYZE_REQUEST", ...capturedData })
+                }).then(r => r.json())
+            ]).then(([otpRes, aiRes]) => {
+
+                // Replace "Thinking" with Actual Response
+                const chatStream = document.getElementById('chat-stream');
+                const lastMsg = chatStream.lastElementChild;
+                lastMsg.remove(); // Remove loader
+
+                // SHOW ANALYSIS
+                let aiText = "";
+                if (aiRes.status === "CLARIFY") {
+                    aiText = `<strong>${aiRes.agent_comment || "I have a few questions:"}</strong><ul>`;
+                    aiRes.questions.forEach(q => aiText += `<li>${q}</li>`);
+                    aiText += `</ul>`;
+                } else {
+                    aiText = `<strong>${aiRes.agent_comment || "Plan looks solid. I am ready to track this."}</strong>`;
+                }
+
+                // SHOW OTP WIDGET
+                const otpHtml = `
+                    <div class="otp-panel">
+                        <div>🔒 Identity Verification</div>
+                        <p style="font-size:0.8rem; color:#ccc;">Sent code to ${contact}</p>
+                        <input type="text" id="otp_code" class="otp-digits" maxlength="6" placeholder="000000">
+                        <br>
+                        <button class="send-btn" style="margin: 10px auto;" onclick="verifyFinal()">Confirm & Launch</button>
+                        <div id="otp-error" style="color:#ef4444; margin-top:5px;"></div>
+                    </div>
+                `;
+
+                if (otpRes.debug_otp) aiText += `<br><br><small style="color:#10a37f">[DEBUG: OTP is ${otpRes.debug_otp}]</small>`;
+
+                addMessage('assistant', aiText + otpHtml);
+
+            }).catch(e => {
+                addMessage('assistant', "⚠️ Connection Error. Please refresh and try again.");
+            });
+        }
+
+        async function verifyFinal() {
+            const code = document.getElementById('otp_code').value;
+            if (!code) return;
+
+            try {
+                const res = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: "VERIFY_OTP", otp: code, ...capturedData })
+                });
+                if (res.ok) {
+                    addMessage('assistant', `✅ <strong>Verified!</strong> I am now hunting for flights. I will SMS you when I find a deal.`);
+                    // Hide OTP panel
+                    document.querySelector('.otp-panel').style.display = 'none';
+                } else {
+                    document.getElementById('otp-error').innerText = "Incorrect Code.";
+                }
+            } catch (e) { alert("Network Error"); }
+        }
+
+        // --- HELPER: Add Bubble ---
+        function addMessage(role, htmlParams) {
+            const stream = document.getElementById('chat-stream');
+
+            const row = document.createElement('div');
+            row.className = `message-row ${role}`;
+
+            const content = document.createElement('div');
+            content.className = 'message-content';
+
+            const avatar = document.createElement('div');
+            avatar.className = `avatar ${role === 'user' ? 'user' : 'gpt'}`;
+            avatar.innerHTML = role === 'user' ? '👤' : '🤖';
+
+            const text = document.createElement('div');
+            text.className = 'text-block';
+            text.innerHTML = htmlParams;
+
+            content.appendChild(avatar);
+            content.appendChild(text);
+            row.appendChild(content);
+
+            stream.appendChild(row);
+            stream.scrollTop = stream.scrollHeight;
+
+            return row; // Return element reference
+        }
+    </script>
+</body>
+
+</html>

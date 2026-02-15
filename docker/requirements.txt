@@ -1,0 +1,6 @@
+requests
+playwright
+playwright-stealth
+boto3
+google-generativeai
+awslambdaric
