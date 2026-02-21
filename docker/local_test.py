@@ -13,8 +13,8 @@ import lambda_function # Import the module first to patch it
 from lambda_function import call_skyscanner, resolve_entity_id, evaluate_flight_deal
 
 # --- USER: PASTE YOUR KEYS HERE FOR LOCAL TESTING ---
-MY_RAPIDAPI_KEY = "d5bb402f1cmsh0386fba83a33485p1a43a4jsneb976dccf37a" 
-MY_GEMINI_KEY = "AIzaSyBTfhFKvieiDT8CVn_UZXtMHKvUwDc6uFA"
+MY_RAPIDAPI_KEY = "" 
+MY_GEMINI_KEY = ""
 
 # Monkey Patch: Force the lambda module to use these keys instead of SSM
 lambda_function.RAPIDAPI_KEY = MY_RAPIDAPI_KEY
